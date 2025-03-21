@@ -18,3 +18,6 @@ Usage of tcpproxy:
   -web-root string
     	Root directory for static files (default ".")
 ```
+
+
+![webtermtcp](images/webtermtcp.jpg)
