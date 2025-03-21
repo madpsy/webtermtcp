@@ -10,7 +10,7 @@ WebTermTCP - Web version of QtTermTCP
 Probably easiest to run this on the same host as BPQ32. Ensure you have the FBB port configured.
 
 ```
-Usage of build/tcpproxy-linux-amd64:
+Usage of tcpproxy:
   -debug
     	Enable debug logging for hex data and TCP write logs
   -listen-port int
