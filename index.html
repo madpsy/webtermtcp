@@ -9,7 +9,7 @@
     #splitContainer {
       display: flex;
       flex-direction: column;
-      height: calc(100vh - 220px); 
+      height: calc(100vh - 220px);
       border: 1px solid #555;
     }
     #monitor, #terminal {
@@ -18,15 +18,15 @@
       white-space: pre-wrap;
       padding: 10px;
     }
-    /* Updated output styles: white backgrounds with black text */
+    /* Updated output styles */
     #monitor {
       background-color: #fff;
-      color: #000; /* Black for monitor output */
+      color: #000;
       border-bottom: 1px solid #555;
     }
     #terminal {
       background-color: #fff;
-      color: blue; 
+      color: blue;
       font-family: monospace;
     }
     /* One-line input styling */
@@ -35,27 +35,19 @@
       font-family: monospace;
       padding: 5px;
     }
-    /* Style for the monitor options checkboxes */
-    #monitorOptions {
+    /* Monitor options styling */
+    #monitorOptions, #portList {
       margin-bottom: 10px;
       padding: 10px;
       border: 1px solid #aaa;
       background-color: #f8f8f8;
     }
-    #monitorOptions label {
-      margin-right: 15px;
-    }
-    /* Style for the port list checkboxes */
     #portList {
-      margin-bottom: 10px;
-      padding: 10px;
-      border: 1px solid #aaa;
       background-color: #f0f0f0;
     }
-    #portList label {
+    #monitorOptions label, #portList label {
       margin-right: 15px;
     }
-    /* Hide up/down arrows on number input */
     input[type=number]::-webkit-inner-spin-button,
     input[type=number]::-webkit-outer-spin-button {
       -webkit-appearance: none;
@@ -127,14 +119,8 @@
   <script src="socket.io.min.js"></script>
   <script src="bootstrap.bundle.min.js"></script>
   <script>
-    // Global variable to store last port definition string.
     let lastPortDef = "";
-    
-    // New globals to handle incomplete monitor messages.
-    let monitorActive = false;
-    let monitorBuffer = "";
-    let monitorColor = "";
-
+    // No extra monitor buffering now—data is parsed on the fly.
     const socket = io();
     const connectBtn = document.getElementById('connectBtn');
     const hostInput = document.getElementById('host');
@@ -147,27 +133,26 @@
     const terminalDiv = document.getElementById('terminal');
     const inputField = document.getElementById('inputField');
     let isConnected = false;
-    
-    // Global variable for current port mask.
-    // By default, we want Port 1 enabled.
     let portMask = 0x1;
     
-    // Simple color mapping for escape sequences.
-    const colors = [
-      "#000000", "#000080", "#0000C0", "#0000FF",
-      "#008000", "#008080", "#0080C0", "#0080FF",
-      "#00C000", "#00C080", "#00C0C0", "#00C0FF",
-      "#00FF00", "#00FF80", "#00FFC0", "#00FFFF"
-    ];
-
+    // Utility: Remove unwanted control bytes.
+    function bytesToCleanString(arr) {
+      let allowed = [];
+      for (let i = 0; i < arr.length; i++) {
+        let b = arr[i];
+        if (b !== 0xFE && b !== 0xFF && b !== 0x1B && b !== 0x11) {
+          allowed.push(b);
+        }
+      }
+      return String.fromCharCode(...allowed);
+    }
+    
     function logMessage(element, message) {
-      // Remove any trailing newline characters
       message = message.replace(/[\r\n]+$/, "");
       element.innerHTML += message;
       element.scrollTop = element.scrollHeight;
     }
     
-    // When connected, send handshake.
     function sendHandshake() {
       const username = usernameInput.value.trim();
       const password = passwordInput.value.trim();
@@ -175,7 +160,6 @@
       socket.emit("data", handshake);
     }
     
-    // Retrieve monitor options from checkboxes.
     function getMonitorOptions() {
       const mtxparam = document.getElementById('optMonitorTX').checked ? "1" : "0";
       const mcomparam = document.getElementById('optMonitorSup').checked ? "1" : "0";
@@ -185,8 +169,6 @@
       return { mtxparam, mcomparam, monUI, MonitorNODES, MonitorColour };
     }
     
-    // Mimic the trace options command.
-    // Format: "\\\\\\\\<portmask> <mtxparam> <mcomparam> <MonitorNODES> <MonitorColour> <monUI> 0 1\r"
     function sendTraceOptions() {
       let maskHex = portMask.toString(16);
       const opts = getMonitorOptions();
@@ -195,13 +177,11 @@
       socket.emit("data", cmd);
     }
     
-    // When any monitor option checkbox changes, update trace options.
     const monitorOptionCheckboxes = monitorOptionsDiv.querySelectorAll("input[type=checkbox]");
     monitorOptionCheckboxes.forEach(cb => {
       cb.addEventListener("change", sendTraceOptions);
     });
     
-    // Update the port mask when a port checkbox is toggled.
     function updatePortMask() {
       portMask = 0;
       const checkboxes = portListDiv.querySelectorAll("input[type=checkbox]");
@@ -214,18 +194,11 @@
       sendTraceOptions();
     }
     
-    // When connection is established, request port definitions by sending trace options.
     function initiatePortMonitoring() {
       sendHandshake();
       sendTraceOptions();
     }
     
-    // Make sure the Socket.IO connection is ready so that socket.id is available.
-    socket.on("connect", () => {
-      console.log("Connected with client_id:", socket.id);
-    });
-    
-    // Connection/Disconnection logic.
     connectBtn.addEventListener('click', () => {
       if (!isConnected) {
         const host = hostInput.value.trim();
@@ -234,16 +207,10 @@
           alert("Please enter valid host and port");
           return;
         }
-        // Include client_id in the API call.
         fetch("/api", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ 
-            action: "connect", 
-            client_id: socket.id, 
-            host: host, 
-            port: port 
-          })
+          body: JSON.stringify({ action: "connect", client_id: socket.id, host: host, port: port })
         })
         .then(response => response.json())
         .then(data => {
@@ -251,7 +218,6 @@
             isConnected = true;
             connectBtn.innerText = "Disconnect";
             logMessage(terminalDiv, "Connected to " + host + ":" + port + "<br>");
-            // Save connection settings to localStorage.
             localStorage.setItem("host", host);
             localStorage.setItem("port", portInput.value.trim());
             localStorage.setItem("username", usernameInput.value.trim());
@@ -266,14 +232,10 @@
           alert("Error connecting");
         });
       } else {
-        // Include client_id in the disconnect API call.
         fetch("/api", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ 
-            action: "disconnect", 
-            client_id: socket.id 
-          })
+          body: JSON.stringify({ action: "disconnect", client_id: socket.id })
         })
         .then(response => response.json())
         .then(data => {
@@ -292,200 +254,128 @@
       }
     });
     
-    // On page load, pre-populate connection fields from localStorage if available,
-    // or use default values for host (127.0.0.1) and port (8011).
     window.addEventListener("load", () => {
-      if (localStorage.getItem("host")) {
-        hostInput.value = localStorage.getItem("host");
-      } else {
-        hostInput.value = "127.0.0.1";
-      }
-      if (localStorage.getItem("port")) {
-        portInput.value = localStorage.getItem("port");
-      } else {
-        portInput.value = "8011";
-      }
-      if (localStorage.getItem("username")) {
-        usernameInput.value = localStorage.getItem("username");
-      }
-      if (localStorage.getItem("password")) {
-        passwordInput.value = localStorage.getItem("password");
-      }
+      hostInput.value = localStorage.getItem("host") || "127.0.0.1";
+      portInput.value = localStorage.getItem("port") || "8011";
+      usernameInput.value = localStorage.getItem("username") || "";
+      passwordInput.value = localStorage.getItem("password") || "";
     });
     
-    // Data handler: process incoming data as raw bytes.
-    socket.on("data", (data) => {
-      console.log("Received data:", data);
-      let arr;
-      if (data instanceof ArrayBuffer) {
-        arr = new Uint8Array(data);
-      } else if (typeof data === "string") {
-        arr = new Uint8Array(data.split('').map(c => c.charCodeAt(0)));
-      } else {
-        console.error("Unexpected data type", typeof data);
-        return;
-      }
+    // --- New Data Processing Approach ---
 
-      const hexStr = Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join(" ");
-      console.log("Raw data bytes (hex):", hexStr);
-
-      // Port definition message: two leading 0xFF bytes.
-      if (arr.length >= 2 && arr[0] === 0xFF && arr[1] === 0xFF) {
-        let portDef = "";
-        for (let i = 2; i < arr.length; i++) {
-          portDef += String.fromCharCode(arr[i]);
-        }
-        console.log("Port definition received:", portDef);
-        if (portDef !== lastPortDef) {
-          lastPortDef = portDef;
-          // Expected format: "N|port1|port2|...|"
-          let tokens = portDef.split("|");
-          portListDiv.innerHTML = "";
-          for (let i = 1; i < tokens.length; i++) {
-            let token = tokens[i].trim();
-            if (token) {
-              let portnum = parseInt(token, 10);
-              let checkbox = document.createElement("input");
-              checkbox.type = "checkbox";
-              checkbox.value = portnum;
-              if (portnum === 1) {
-                checkbox.checked = true;
+  socket.on("data", (data) => {
+    let arr;
+    if (data instanceof ArrayBuffer) {
+      arr = new Uint8Array(data);
+    } else if (typeof data === "string") {
+      arr = new Uint8Array(data.split('').map(c => c.charCodeAt(0)));
+    } else {
+      console.error("Unexpected data type", typeof data);
+      return;
+    }
+    
+    let pos = 0;
+    while (pos < arr.length) {
+      // If the byte is 0xFF, it may be a monitor message or port definition.
+      if (arr[pos] === 0xFF) {
+        // Check if it's a port definition (two leading 0xFF).
+        if (pos + 1 < arr.length && arr[pos+1] === 0xFF) {
+          let portDef = String.fromCharCode(...arr.slice(pos+2));
+          console.log("Port definition received:", portDef);
+          if (portDef !== lastPortDef) {
+            lastPortDef = portDef;
+            let tokens = portDef.split("|");
+            portListDiv.innerHTML = "";
+            for (let i = 1; i < tokens.length; i++) {
+              let token = tokens[i].trim();
+              if (token) {
+                let portnum = parseInt(token, 10);
+                let checkbox = document.createElement("input");
+                checkbox.type = "checkbox";
+                checkbox.value = portnum;
+                if (portnum === 1) { checkbox.checked = true; }
+                checkbox.addEventListener("change", updatePortMask);
+                let label = document.createElement("label");
+                label.appendChild(checkbox);
+                label.appendChild(document.createTextNode(" " + token));
+                portListDiv.appendChild(label);
               }
-              checkbox.addEventListener("change", updatePortMask);
-              let label = document.createElement("label");
-              label.appendChild(checkbox);
-              label.appendChild(document.createTextNode(" " + token));
-              portListDiv.appendChild(label);
+            }
+            updatePortMask();
+          }
+          // Consume entire port definition and break out.
+          break;
+        } else {
+          // We have a monitor message.
+          let color = "blue"; // default for received messages
+          let start = pos + 1;
+          // Check if next byte is the ESC (0x1B) which indicates special handling.
+          if (pos + 1 < arr.length && arr[pos+1] === 0x1B) {
+            // Look at the following byte to decide if transmitted or received.
+            if (pos + 2 < arr.length) {
+              if (arr[pos+2] === 0x5B) {
+                color = "red";  // transmitted
+                start = pos + 3;
+              } else if (arr[pos+2] === 0x11) {
+                color = "blue"; // received
+                start = pos + 3;
+              } else {
+                // Unknown control; default to transmitted.
+                color = "red";
+                start = pos + 2;
+              }
+            } else {
+              // Not enough bytes; break out and wait for more data.
+              break;
             }
           }
-          updatePortMask();
+          // Find the termination marker 0xFE.
+          let feIndex = arr.indexOf(0xFE, start);
+          if (feIndex !== -1) {
+            // Before the monitor marker, output any normal text if present.
+            if (pos > 0) {
+              let normalPart = arr.slice(0, pos);
+              let text = bytesToCleanString(normalPart).replace(/\r/g, "<br>");
+              logMessage(terminalDiv, text);
+            }
+            // Extract the monitor message between the start and the termination marker.
+            let monitorData = arr.slice(start, feIndex);
+            let monitorText = bytesToCleanString(monitorData).replace(/\r/g, "\n");
+            let span = document.createElement("span");
+            span.style.color = color;
+            span.textContent = monitorText;
+            monitorDiv.appendChild(span);
+            monitorDiv.scrollTop = monitorDiv.scrollHeight;
+            // Continue processing after the termination marker.
+            arr = arr.slice(feIndex + 1);
+            pos = 0;
+            continue;
+          } else {
+            // No termination marker found. Treat the remaining as normal text.
+            let text = bytesToCleanString(arr.slice(pos)).replace(/\r/g, "<br>");
+            logMessage(terminalDiv, text);
+            break;
+          }
         }
-        return;
+      } else {
+        // No monitor marker at the current position; output as normal terminal text.
+        let nextFF = arr.indexOf(0xFF, pos);
+        if (nextFF === -1) nextFF = arr.length;
+        let normalData = arr.slice(pos, nextFF);
+        let text = bytesToCleanString(normalData).replace(/\r/g, "<br>");
+        logMessage(terminalDiv, text);
+        pos = nextFF;
       }
+    }
+  });
 
-      // Transmitted monitor message: starts with 0xFF then ESC.
-      if (arr.length >= 3 && arr[0] === 0xFF && arr[1] === 0x1B) {
-        let start = 2;
-        let isTransmitted;
-        if (arr.length > 2 && arr[2] === 0x5B) {
-          console.log("Extra '[' detected; treating message as transmitted (red)");
-          isTransmitted = true;
-          start = 3;
-        } else if (arr.length > 2 && arr[2] === 0x11) {
-          console.log("Control byte 0x11 detected; treating message as received (blue)");
-          isTransmitted = false;
-          start = 3;
-        } else {
-          isTransmitted = true;
-        }
-        let color = isTransmitted ? "red" : "blue";
-        // If the packet doesn't end with 0xFE, accumulate and wait.
-        if (arr[arr.length - 1] !== 0xFE) {
-          let partial = "";
-          for (let i = start; i < arr.length; i++) {
-            partial += String.fromCharCode(arr[i]);
-          }
-          monitorActive = true;
-          monitorBuffer = partial;
-          monitorColor = color;
-          return;
-        }
-        // Otherwise, process complete message.
-        let end = arr.length - 1;
-        let actualText = "";
-        for (let i = start; i < end; i++) {
-          actualText += String.fromCharCode(arr[i]);
-        }
-        if (monitorActive) {
-          actualText = monitorBuffer + actualText;
-          monitorActive = false;
-          monitorBuffer = "";
-        }
-        actualText = actualText.replace(/\r/g, "\n");
-        const span = document.createElement("span");
-        span.style.color = color;
-        span.textContent = actualText;
-        monitorDiv.appendChild(span);
-        monitorDiv.scrollTop = monitorDiv.scrollHeight;
-        return;
-      }
-      
-      // Received monitor data: starts with 0xFF (but not followed by ESC).
-      if (arr.length >= 2 && arr[0] === 0xFF && arr[1] !== 0x1B) {
-        let start = 1;
-        let color = "blue";
-        if (arr[arr.length - 1] !== 0xFE) {
-          let partial = "";
-          for (let i = start; i < arr.length; i++) {
-            partial += String.fromCharCode(arr[i]);
-          }
-          monitorActive = true;
-          monitorBuffer = partial;
-          monitorColor = color;
-          return;
-        }
-        let end = arr.length - 1;
-        let monitorText = "";
-        for (let i = start; i < end; i++) {
-          monitorText += String.fromCharCode(arr[i]);
-        }
-        if (monitorActive) {
-          monitorText = monitorBuffer + monitorText;
-          monitorActive = false;
-          monitorBuffer = "";
-        }
-        console.log("Received monitor data from 0xFF branch:", monitorText);
-        const span = document.createElement("span");
-        span.style.color = color;
-        span.textContent = monitorText.replace(/\r/g, "\n");
-        monitorDiv.appendChild(span);
-        monitorDiv.scrollTop = monitorDiv.scrollHeight;
-        return;
-      }
-      
-      // Other ESC messages (without preceding 0xFF)
-      if (arr.length >= 2 && arr[0] === 0x1B) {
-        let code = arr[1];
-        let start = 2;
-        if (arr.length > 2 && arr[2] === 0x5B) {
-          start = 3;
-        }
-        let colorIndex = code - 10;
-        let color = colors[colorIndex] || "#ff0";
-        let actualText = "";
-        for (let i = start; i < arr.length; i++) {
-          actualText += String.fromCharCode(arr[i]);
-        }
-        console.log("ESC-only message; code:", code, "text:", actualText);
-        const span = document.createElement("span");
-        span.style.color = color;
-        span.textContent = actualText;
-        monitorDiv.appendChild(span);
-        return;
-      }
-      
-      // Default: normal terminal output.
-      let text = "";
-      for (let i = 0; i < arr.length; i++) {
-        text += String.fromCharCode(arr[i]);
-      }
-      console.log("Terminal text in hex:", Array.from(text)
-        .map(c => c.charCodeAt(0).toString(16).padStart(2, '0'))
-        .join(" "));
-      if(text.includes("\r")) {
-        console.log("Terminating carriage return found in the text.");
-      }
-      logMessage(terminalDiv, text.replace(/\r/g, "<br>"));
-    });
     
-    // Handle remote TCP disconnect event.
     socket.on("tcp_disconnect", (message) => {
       logMessage(terminalDiv, "TCP disconnected: " + message + "<br>");
       isConnected = false;
       connectBtn.innerText = "Connect";
     });
     
-    // When the user presses Enter, send text (with newline replaced by carriage return).
     inputField.addEventListener("keydown", e => {
       if (e.key === "Enter") {
         e.preventDefault();
@@ -500,7 +390,6 @@
       }
     });
     
-    // Keep-alive timer: send a null character every 9 minutes.
     setInterval(() => {
       if (isConnected) {
         socket.emit("data", "\0");
