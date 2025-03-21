@@ -20,4 +20,4 @@ Usage of tcpproxy:
 ```
 
 
-![webtermtcp](images/webtermtcp.jpg)
+![webtermtcp](images/webtermtcp.png)
