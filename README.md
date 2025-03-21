@@ -9,6 +9,8 @@ WebTermTCP - Web version of QtTermTCP
 
 Probably easiest to run this on the same host as BPQ32. Ensure you have the FBB port configured.
 
+You could run it behind an HTTPS proxy with basic auth and make it Internet accessible easily and safely.
+
 ```
 Usage of tcpproxy:
   -debug
