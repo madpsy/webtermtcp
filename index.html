@@ -384,7 +384,7 @@
         if (rawText) {
           const message = rawText.replace(/\n/g, "\r") + "\r";
           socket.emit("data", message);
-          terminalDiv.innerHTML += "<br>" + rawText + "<br>";
+          terminalDiv.innerHTML += rawText + "<br>";
           terminalDiv.scrollTop = terminalDiv.scrollHeight;
           inputField.value = "";
         }
