@@ -160,12 +160,12 @@
             <!-- Dynamically filled -->
           </div>
         </div>
-	<div class="modal-footer position-relative">
-	  <div class="w-100 text-center">
-	    <a href="https://github.com/madpsy/webtermtcp" target="_blank" rel="noopener noreferrer">WebTermTCP Github</a>
-	  </div>
-	  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" style="position: absolute; right: 0; z-index: 2;">Close</button>
-	</div>
+	      <div class="modal-footer position-relative">
+	        <div class="w-100 text-center">
+	          <a href="https://github.com/madpsy/webtermtcp" target="_blank" rel="noopener noreferrer">WebTermTCP Github</a>
+	        </div>
+	        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" style="position: absolute; right: 0; z-index: 2;">Close</button>
+	      </div>
       </div>
     </div>
   </div>
@@ -195,6 +195,21 @@
     let commandHistory = JSON.parse(localStorage.getItem("commandHistory") || "[]");
     let commandHistoryIndex = commandHistory.length;
     
+    // --- Linkify Function ---
+    function linkify(text) {
+      return text.replace(/(https?:\/\/[^\s<]+)/g, function(url) {
+        return `<a href="${url}" target="_blank" rel="noopener noreferrer"><u>${url}</u></a>`;
+      });
+    }
+    
+    // --- Updated logMessage Function ---
+    function logMessage(element, message) {
+      message = message.replace(/[\r\n]+$/, "");
+      message = linkify(message);
+      element.innerHTML += message;
+      element.scrollTop = element.scrollHeight;
+    }
+    
     function bytesToCleanString(arr) {
       let allowed = [];
       for (let i = 0; i < arr.length; i++) {
@@ -204,12 +219,6 @@
         }
       }
       return String.fromCharCode(...allowed);
-    }
-    
-    function logMessage(element, message) {
-      message = message.replace(/[\r\n]+$/, "");
-      element.innerHTML += message;
-      element.scrollTop = element.scrollHeight;
     }
     
     function sendHandshake() {
@@ -580,7 +589,8 @@
               let monitorText = bytesToCleanString(monitorData).replace(/\r/g, "\n");
               let span = document.createElement("span");
               span.style.color = color;
-              span.textContent = monitorText;
+              // Use innerHTML with linkify to convert URLs to underlined clickable links.
+              span.innerHTML = linkify(monitorText);
               monitorDiv.appendChild(span);
               monitorDiv.scrollTop = monitorDiv.scrollHeight;
               arr = arr.slice(feIndex + 1);
