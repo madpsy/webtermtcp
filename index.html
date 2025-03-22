@@ -187,8 +187,11 @@
     const savedHostsBtn = document.getElementById('savedHostsBtn');
     let isConnected = false;
     let portMask = 0x1;
+
+    // --- Command History Variables ---
+    let commandHistory = JSON.parse(localStorage.getItem("commandHistory") || "[]");
+    let commandHistoryIndex = commandHistory.length;
     
-    // Utility: Remove unwanted control bytes.
     function bytesToCleanString(arr) {
       let allowed = [];
       for (let i = 0; i < arr.length; i++) {
@@ -335,10 +338,10 @@
         let item = document.createElement("div");
         item.className = "list-group-item list-group-item-action d-flex justify-content-between align-items-center";
         item.textContent = hostObj.friendlyName;
-        let loadButton = document.createElement("button");
-        loadButton.className = "btn btn-sm btn-outline-primary";
-        loadButton.textContent = "Load";
-        loadButton.addEventListener("click", function() {
+        let connectButton = document.createElement("button");
+        connectButton.className = "btn btn-sm btn-outline-primary";
+        connectButton.textContent = "Connect";
+        connectButton.addEventListener("click", function() {
           hostInput.value = hostObj.host;
           portInput.value = hostObj.port;
           usernameInput.value = hostObj.username;
@@ -347,6 +350,31 @@
           let modal = bootstrap.Modal.getInstance(modalEl);
           if (modal) {
              modal.hide();
+          }
+          if (isConnected) {
+            // Disconnect first before connecting to the new host.
+            fetch("/api", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "disconnect", client_id: socket.id })
+            })
+            .then(response => response.json())
+            .then(data => {
+              if (data.status === "success") {
+                isConnected = false;
+                connectBtn.innerText = "Connect";
+                logMessage(terminalDiv, "Disconnected<br>");
+                connectToSavedHost(hostObj);
+              } else {
+                alert("Failed to disconnect");
+              }
+            })
+            .catch(err => {
+              console.error(err);
+              alert("Error disconnecting");
+            });
+          } else {
+            connectToSavedHost(hostObj);
           }
         });
         let deleteButton = document.createElement("button");
@@ -358,10 +386,37 @@
           updateSavedHostsList();
         });
         let buttonGroup = document.createElement("div");
-        buttonGroup.appendChild(loadButton);
+        buttonGroup.appendChild(connectButton);
         buttonGroup.appendChild(deleteButton);
         item.appendChild(buttonGroup);
         listDiv.appendChild(item);
+      });
+    }
+    
+    function connectToSavedHost(hostObj) {
+      fetch("/api", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "connect", client_id: socket.id, host: hostObj.host, port: parseInt(hostObj.port, 10) })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.status === "success") {
+          isConnected = true;
+          connectBtn.innerText = "Disconnect";
+          logMessage(terminalDiv, "Connected to " + hostObj.host + ":" + hostObj.port + "<br>");
+          localStorage.setItem("host", hostObj.host);
+          localStorage.setItem("port", hostObj.port);
+          localStorage.setItem("username", hostObj.username);
+          localStorage.setItem("password", hostObj.password);
+          initiatePortMonitoring();
+        } else {
+          alert("Failed to connect");
+        }
+      })
+      .catch(err => {
+        console.error(err);
+        alert("Error connecting");
       });
     }
     
@@ -396,13 +451,12 @@
       document.getElementById("savedHostForm").reset();
     });
     
-    // When clicking the Saved Hosts button, pre-populate the Add New Host inputs with the current main page values.
+    // When clicking the Saved Hosts button, pre-populate the Add New Host inputs with current main page values.
     savedHostsBtn.addEventListener("click", function() {
       document.getElementById("saveHost").value = hostInput.value;
       document.getElementById("savePort").value = portInput.value;
       document.getElementById("saveUsername").value = usernameInput.value;
       document.getElementById("savePassword").value = passwordInput.value;
-      // Optionally pre-populate the friendly name as host:port if available.
       if(hostInput.value && portInput.value){
           document.getElementById("saveFriendlyName").value = hostInput.value + ":" + portInput.value;
       } else {
@@ -412,6 +466,45 @@
       let modal = new bootstrap.Modal(modalEl);
       updateSavedHostsList();
       modal.show();
+    });
+    
+    // --- Input Field Command History Functionality ---
+    inputField.addEventListener("keydown", function(e) {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        const rawText = inputField.value;
+        if (rawText) {
+          const message = rawText.replace(/\n/g, "\r") + "\r";
+          socket.emit("data", message);
+          terminalDiv.innerHTML += rawText + "<br>";
+          terminalDiv.scrollTop = terminalDiv.scrollHeight;
+          
+          if(commandHistory.length === 0 || commandHistory[commandHistory.length - 1] !== rawText) {
+            commandHistory.push(rawText);
+            if (commandHistory.length > 100) {
+              commandHistory.shift();
+            }
+            localStorage.setItem("commandHistory", JSON.stringify(commandHistory));
+          }
+          commandHistoryIndex = commandHistory.length;
+          inputField.value = "";
+        }
+      } else if (e.key === "ArrowUp") {
+        if (commandHistory.length > 0 && commandHistoryIndex > 0) {
+          commandHistoryIndex--;
+          inputField.value = commandHistory[commandHistoryIndex];
+        }
+        e.preventDefault();
+      } else if (e.key === "ArrowDown") {
+        if (commandHistory.length > 0 && commandHistoryIndex < commandHistory.length - 1) {
+          commandHistoryIndex++;
+          inputField.value = commandHistory[commandHistoryIndex];
+        } else {
+          commandHistoryIndex = commandHistory.length;
+          inputField.value = "";
+        }
+        e.preventDefault();
+      }
     });
     
     // --- New Data Processing Approach ---
@@ -513,20 +606,7 @@
       connectBtn.innerText = "Connect";
     });
     
-    inputField.addEventListener("keydown", e => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        const rawText = inputField.value;
-        if (rawText) {
-          const message = rawText.replace(/\n/g, "\r") + "\r";
-          socket.emit("data", message);
-          terminalDiv.innerHTML += rawText + "<br>";
-          terminalDiv.scrollTop = terminalDiv.scrollHeight;
-          inputField.value = "";
-        }
-      }
-    });
-    
+    // Periodic keep-alive
     setInterval(() => {
       if (isConnected) {
         socket.emit("data", "\0");
