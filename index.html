@@ -75,6 +75,10 @@
       <div class="col-md-2">
         <input type="password" id="password" class="form-control" placeholder="Password">
       </div>
+      <!-- Saved Hosts Button -->
+      <div class="col-md-2">
+        <button id="savedHostsBtn" class="btn btn-secondary w-100">Saved Hosts</button>
+      </div>
       <div class="col-md-2">
         <button id="connectBtn" class="btn btn-primary w-100">Connect</button>
       </div>
@@ -116,6 +120,53 @@
     </div>
   </div>
 
+  <!-- Saved Hosts Modal -->
+  <div class="modal fade" id="savedHostsModal" tabindex="-1" aria-labelledby="savedHostsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="savedHostsModalLabel">Saved Hosts</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <!-- Form to add new host -->
+          <h6>Add New Host</h6>
+          <form id="savedHostForm">
+            <div class="row mb-2">
+              <div class="col-md-4">
+                <input type="text" id="saveFriendlyName" class="form-control" placeholder="Friendly Name" required>
+              </div>
+              <div class="col-md-4">
+                <input type="text" id="saveHost" class="form-control" placeholder="Host" required>
+              </div>
+              <div class="col-md-4">
+                <input type="number" id="savePort" class="form-control" placeholder="Port" required>
+              </div>
+            </div>
+            <div class="row mb-2">
+              <div class="col-md-6">
+                <input type="text" id="saveUsername" class="form-control" placeholder="Username">
+              </div>
+              <div class="col-md-6">
+                <input type="password" id="savePassword" class="form-control" placeholder="Password">
+              </div>
+            </div>
+            <button type="submit" class="btn btn-primary">Save Host</button>
+          </form>
+          <hr>
+          <!-- List saved hosts -->
+          <h6>Load Saved Host</h6>
+          <div id="savedHostsList" class="list-group">
+            <!-- Dynamically filled -->
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Socket.IO and Bootstrap scripts -->
   <script src="socket.io.min.js"></script>
   <script src="bootstrap.bundle.min.js"></script>
@@ -133,6 +184,7 @@
     const monitorDiv = document.getElementById('monitor');
     const terminalDiv = document.getElementById('terminal');
     const inputField = document.getElementById('inputField');
+    const savedHostsBtn = document.getElementById('savedHostsBtn');
     let isConnected = false;
     let portMask = 0x1;
     
@@ -262,114 +314,198 @@
       passwordInput.value = localStorage.getItem("password") || "";
     });
     
-    // --- New Data Processing Approach ---
-
-  socket.on("data", (data) => {
-    let arr;
-    if (data instanceof ArrayBuffer) {
-      arr = new Uint8Array(data);
-    } else if (typeof data === "string") {
-      arr = new Uint8Array(data.split('').map(c => c.charCodeAt(0)));
-    } else {
-      console.error("Unexpected data type", typeof data);
-      return;
+    // --- Saved Hosts Modal Functionality ---
+    function loadSavedHosts() {
+      let savedHosts = localStorage.getItem("savedHosts");
+      if (savedHosts) {
+        return JSON.parse(savedHosts);
+      }
+      return [];
     }
     
-    let pos = 0;
-    while (pos < arr.length) {
-      // If the byte is 0xFF, it may be a monitor message or port definition.
-      if (arr[pos] === 0xFF) {
-        // Check if it's a port definition (two leading 0xFF).
-        if (pos + 1 < arr.length && arr[pos+1] === 0xFF) {
-          let portDef = String.fromCharCode(...arr.slice(pos+2));
-          console.log("Port definition received:", portDef);
-          if (portDef !== lastPortDef) {
-            lastPortDef = portDef;
-            let tokens = portDef.split("|");
-            portListDiv.innerHTML = "";
-            for (let i = 1; i < tokens.length; i++) {
-              let token = tokens[i].trim();
-              if (token) {
-                let portnum = parseInt(token, 10);
-                let checkbox = document.createElement("input");
-                checkbox.type = "checkbox";
-                checkbox.value = portnum;
-                if (portnum === 1) { checkbox.checked = true; }
-                checkbox.addEventListener("change", updatePortMask);
-                let label = document.createElement("label");
-                label.appendChild(checkbox);
-                label.appendChild(document.createTextNode(" " + token));
-                portListDiv.appendChild(label);
+    function saveHostsToLocalStorage(hosts) {
+      localStorage.setItem("savedHosts", JSON.stringify(hosts));
+    }
+    
+    function updateSavedHostsList() {
+      let savedHosts = loadSavedHosts();
+      const listDiv = document.getElementById("savedHostsList");
+      listDiv.innerHTML = "";
+      savedHosts.forEach((hostObj, index) => {
+        let item = document.createElement("div");
+        item.className = "list-group-item list-group-item-action d-flex justify-content-between align-items-center";
+        item.textContent = hostObj.friendlyName;
+        let loadButton = document.createElement("button");
+        loadButton.className = "btn btn-sm btn-outline-primary";
+        loadButton.textContent = "Load";
+        loadButton.addEventListener("click", function() {
+          hostInput.value = hostObj.host;
+          portInput.value = hostObj.port;
+          usernameInput.value = hostObj.username;
+          passwordInput.value = hostObj.password;
+          let modalEl = document.getElementById('savedHostsModal');
+          let modal = bootstrap.Modal.getInstance(modalEl);
+          if (modal) {
+             modal.hide();
+          }
+        });
+        let deleteButton = document.createElement("button");
+        deleteButton.className = "btn btn-sm btn-outline-danger ms-2";
+        deleteButton.textContent = "Delete";
+        deleteButton.addEventListener("click", function() {
+          savedHosts.splice(index, 1);
+          saveHostsToLocalStorage(savedHosts);
+          updateSavedHostsList();
+        });
+        let buttonGroup = document.createElement("div");
+        buttonGroup.appendChild(loadButton);
+        buttonGroup.appendChild(deleteButton);
+        item.appendChild(buttonGroup);
+        listDiv.appendChild(item);
+      });
+    }
+    
+    document.getElementById("savedHostForm").addEventListener("submit", function(e) {
+      e.preventDefault();
+      let friendlyName = document.getElementById("saveFriendlyName").value.trim();
+      let host = document.getElementById("saveHost").value.trim();
+      let port = document.getElementById("savePort").value.trim();
+      let username = document.getElementById("saveUsername").value.trim();
+      let password = document.getElementById("savePassword").value.trim();
+      if (!friendlyName || !host || !port) {
+        alert("Friendly name, host, and port are required.");
+        return;
+      }
+      let savedHosts = loadSavedHosts();
+      let exists = savedHosts.some(item => item.friendlyName === friendlyName);
+      if (exists) {
+        if (!confirm("A saved host with this friendly name already exists. Overwrite?")) {
+          return;
+        }
+        savedHosts = savedHosts.map(item => {
+          if (item.friendlyName === friendlyName) {
+            return { friendlyName, host, port, username, password };
+          }
+          return item;
+        });
+      } else {
+        savedHosts.push({ friendlyName, host, port, username, password });
+      }
+      saveHostsToLocalStorage(savedHosts);
+      updateSavedHostsList();
+      document.getElementById("savedHostForm").reset();
+    });
+    
+    // When clicking the Saved Hosts button, pre-populate the Add New Host inputs with the current main page values.
+    savedHostsBtn.addEventListener("click", function() {
+      document.getElementById("saveHost").value = hostInput.value;
+      document.getElementById("savePort").value = portInput.value;
+      document.getElementById("saveUsername").value = usernameInput.value;
+      document.getElementById("savePassword").value = passwordInput.value;
+      // Optionally pre-populate the friendly name as host:port if available.
+      if(hostInput.value && portInput.value){
+          document.getElementById("saveFriendlyName").value = hostInput.value + ":" + portInput.value;
+      } else {
+          document.getElementById("saveFriendlyName").value = "";
+      }
+      let modalEl = document.getElementById('savedHostsModal');
+      let modal = new bootstrap.Modal(modalEl);
+      updateSavedHostsList();
+      modal.show();
+    });
+    
+    // --- New Data Processing Approach ---
+    socket.on("data", (data) => {
+      let arr;
+      if (data instanceof ArrayBuffer) {
+        arr = new Uint8Array(data);
+      } else if (typeof data === "string") {
+        arr = new Uint8Array(data.split('').map(c => c.charCodeAt(0)));
+      } else {
+        console.error("Unexpected data type", typeof data);
+        return;
+      }
+      
+      let pos = 0;
+      while (pos < arr.length) {
+        if (arr[pos] === 0xFF) {
+          if (pos + 1 < arr.length && arr[pos+1] === 0xFF) {
+            let portDef = String.fromCharCode(...arr.slice(pos+2));
+            console.log("Port definition received:", portDef);
+            if (portDef !== lastPortDef) {
+              lastPortDef = portDef;
+              let tokens = portDef.split("|");
+              portListDiv.innerHTML = "";
+              for (let i = 1; i < tokens.length; i++) {
+                let token = tokens[i].trim();
+                if (token) {
+                  let portnum = parseInt(token, 10);
+                  let checkbox = document.createElement("input");
+                  checkbox.type = "checkbox";
+                  checkbox.value = portnum;
+                  if (portnum === 1) { checkbox.checked = true; }
+                  checkbox.addEventListener("change", updatePortMask);
+                  let label = document.createElement("label");
+                  label.appendChild(checkbox);
+                  label.appendChild(document.createTextNode(" " + token));
+                  portListDiv.appendChild(label);
+                }
+              }
+              updatePortMask();
+            }
+            break;
+          } else {
+            let color = "blue";
+            let start = pos + 1;
+            if (pos + 1 < arr.length && arr[pos+1] === 0x1B) {
+              if (pos + 2 < arr.length) {
+                if (arr[pos+2] === 0x5B) {
+                  color = "red";
+                  start = pos + 3;
+                } else if (arr[pos+2] === 0x11) {
+                  color = "blue";
+                  start = pos + 3;
+                } else {
+                  color = "red";
+                  start = pos + 2;
+                }
+              } else {
+                break;
               }
             }
-            updatePortMask();
-          }
-          // Consume entire port definition and break out.
-          break;
-        } else {
-          // We have a monitor message.
-          let color = "blue"; // default for received messages
-          let start = pos + 1;
-          // Check if next byte is the ESC (0x1B) which indicates special handling.
-          if (pos + 1 < arr.length && arr[pos+1] === 0x1B) {
-            // Look at the following byte to decide if transmitted or received.
-            if (pos + 2 < arr.length) {
-              if (arr[pos+2] === 0x5B) {
-                color = "red";  // transmitted
-                start = pos + 3;
-              } else if (arr[pos+2] === 0x11) {
-                color = "blue"; // received
-                start = pos + 3;
-              } else {
-                // Unknown control; default to transmitted.
-                color = "red";
-                start = pos + 2;
+            let feIndex = arr.indexOf(0xFE, start);
+            if (feIndex !== -1) {
+              if (pos > 0) {
+                let normalPart = arr.slice(0, pos);
+                let text = bytesToCleanString(normalPart).replace(/\r/g, "<br>");
+                logMessage(terminalDiv, text);
               }
+              let monitorData = arr.slice(start, feIndex);
+              let monitorText = bytesToCleanString(monitorData).replace(/\r/g, "\n");
+              let span = document.createElement("span");
+              span.style.color = color;
+              span.textContent = monitorText;
+              monitorDiv.appendChild(span);
+              monitorDiv.scrollTop = monitorDiv.scrollHeight;
+              arr = arr.slice(feIndex + 1);
+              pos = 0;
+              continue;
             } else {
-              // Not enough bytes; break out and wait for more data.
+              let text = bytesToCleanString(arr.slice(pos)).replace(/\r/g, "<br>");
+              logMessage(terminalDiv, text);
               break;
             }
           }
-          // Find the termination marker 0xFE.
-          let feIndex = arr.indexOf(0xFE, start);
-          if (feIndex !== -1) {
-            // Before the monitor marker, output any normal text if present.
-            if (pos > 0) {
-              let normalPart = arr.slice(0, pos);
-              let text = bytesToCleanString(normalPart).replace(/\r/g, "<br>");
-              logMessage(terminalDiv, text);
-            }
-            // Extract the monitor message between the start and the termination marker.
-            let monitorData = arr.slice(start, feIndex);
-            let monitorText = bytesToCleanString(monitorData).replace(/\r/g, "\n");
-            let span = document.createElement("span");
-            span.style.color = color;
-            span.textContent = monitorText;
-            monitorDiv.appendChild(span);
-            monitorDiv.scrollTop = monitorDiv.scrollHeight;
-            // Continue processing after the termination marker.
-            arr = arr.slice(feIndex + 1);
-            pos = 0;
-            continue;
-          } else {
-            // No termination marker found. Treat the remaining as normal text.
-            let text = bytesToCleanString(arr.slice(pos)).replace(/\r/g, "<br>");
-            logMessage(terminalDiv, text);
-            break;
-          }
+        } else {
+          let nextFF = arr.indexOf(0xFF, pos);
+          if (nextFF === -1) nextFF = arr.length;
+          let normalData = arr.slice(pos, nextFF);
+          let text = bytesToCleanString(normalData).replace(/\r/g, "<br>");
+          logMessage(terminalDiv, text);
+          pos = nextFF;
         }
-      } else {
-        // No monitor marker at the current position; output as normal terminal text.
-        let nextFF = arr.indexOf(0xFF, pos);
-        if (nextFF === -1) nextFF = arr.length;
-        let normalData = arr.slice(pos, nextFF);
-        let text = bytesToCleanString(normalData).replace(/\r/g, "<br>");
-        logMessage(terminalDiv, text);
-        pos = nextFF;
       }
-    }
-  });
-
+    });
     
     socket.on("tcp_disconnect", (message) => {
       logMessage(terminalDiv, "TCP disconnected: " + message + "<br>");
